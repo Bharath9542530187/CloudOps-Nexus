@@ -1,17 +1,15 @@
 # CloudOps Nexus – Application Screenshots
 
-This section presents the main screens of the CloudOps Nexus application.
-
 ## Dashboard
-The dashboard provides a central view of cloud operations and incident information.
+Main application dashboard with navigation, summary cards, and incident count.
 
 ## Infrastructure Monitoring
-The monitoring view displays EC2 CPU utilization, memory usage, and disk usage retrieved from Amazon CloudWatch.
+The current frontend monitoring screen is a placeholder. The backend provides a separate CloudWatch monitoring endpoint for EC2 CPU, memory, and disk metrics.
 
 ## Incident Management
-The incident view provides incident creation and listing through the FastAPI backend and PostgreSQL database.
+Incident creation and listing through the React interface, FastAPI endpoints, and PostgreSQL database.
 
-## Interface
-The application includes a dark interface for the dashboard.
+## Dark Mode
+The dashboard supports a light/dark theme toggle.
 
-Screenshots in this directory represent the running application. Sensitive infrastructure identifiers and personal information are excluded.
+Screenshots of the actual application interface belong in this directory. No screenshot images are currently included in the repository.
