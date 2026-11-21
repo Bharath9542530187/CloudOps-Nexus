@@ -4,36 +4,49 @@ CloudOps Nexus is a small AWS operations dashboard built to bring EC2 monitoring
 
 ## Architecture
 
-The deployed version uses one Amazon EC2 instance. The application is split into three Docker containers so each service has its own runtime.
+CloudOps Nexus is hosted on one existing Amazon EC2 instance. **EC2 is the deployment host for the complete application.** Docker Compose runs the frontend, backend, and database as three containers on that instance.
 
 ```mermaid
 flowchart TB
-    Browser[User browser] -->|HTTP on port 80| Nginx[Nginx serving React]
-    Nginx -->|API requests| API[FastAPI]
-    API -->|Read and write incidents| DB[(PostgreSQL)]
-    DB --> Volume[(postgres_data volume)]
-    API -->|Fetch EC2 metrics| CW[Amazon CloudWatch]
-    IAM[EC2 instance role] -->|Permissions| API
+    Browser[User browser]
 
-    subgraph Instance[Existing AWS EC2 instance]
-      subgraph Compose[Docker Compose network]
-        Nginx
-        API
-        DB
-        Volume
+    subgraph EC2["AWS EC2 instance — CloudOps Nexus deployment host"]
+      direction TB
+
+      subgraph APP["Docker Compose — cloudops network"]
+        direction TB
+        Nginx["Frontend container<br/>React + Nginx<br/>Host port 80"]
+        API["Backend container<br/>FastAPI :8000"]
+        DB[("Database container<br/>PostgreSQL :5432")]
+        VOL[("Persistent volume<br/>postgres_data")]
+
+        Nginx -->|/api requests| API
+        API -->|Incident data| DB
+        DB --- VOL
       end
-      Runner[GitHub Actions self-hosted runner]
-      Runner -->|Builds and starts services| Compose
+
+      Runner["GitHub Actions self-hosted runner"]
+      Runner -->|Runs docker-compose up --build| APP
     end
+
+    Browser -->|HTTP to EC2 public IP :80| Nginx
+
+    API -->|Reads CPU, memory and disk metrics| CW["Amazon CloudWatch"]
+    ROLE["IAM role attached to EC2"] -.->|Grants AWS permissions| API
+    GitHub["GitHub repository<br/>push to main"] -->|Triggers workflow| Runner
 ```
 
-- **React and Nginx:** Nginx serves the built frontend on port 80. Requests beginning with `/api/` are forwarded to FastAPI.
-- **FastAPI:** Handles the dashboard's API requests, creates and lists incidents, and requests CPU, memory, and disk metrics from CloudWatch.
-- **PostgreSQL:** Stores incident data. Its files live in the `postgres_data` Docker volume, so recreating containers does not remove the database.
-- **Docker Compose:** Connects the three services on the `cloudops` bridge network. The backend reaches PostgreSQL by its Compose service name, `database`.
-- **EC2 IAM role:** Gives the backend access to the CloudWatch metrics it needs without placing AWS access keys in the application configuration.
+### How the components work together
 
-Only the frontend publishes a host port (`80:80`). The backend's port 8000 and PostgreSQL's port 5432 are available to the other containers on the private Docker network, not published as host ports.
+- **EC2:** Hosts the Docker Engine, the self-hosted GitHub Actions runner, and all three application containers.
+- **Frontend container:** Nginx serves the React production build on port 80. It forwards requests under `/api/` to FastAPI.
+- **Backend container:** FastAPI handles incident requests and retrieves EC2 CPU, memory, and disk metrics from CloudWatch using Boto3.
+- **Database container:** PostgreSQL stores incident records. The `postgres_data` volume keeps database files when containers are recreated.
+- **Docker Compose:** Connects the frontend, backend, and database through the private `cloudops` bridge network. Only the frontend publishes a host port (`80:80`); ports 8000 and 5432 are not published to the host.
+- **GitHub Actions runner:** Runs on the EC2 instance. A push to `main` triggers the workflow, which checks the code, builds the frontend, validates the Compose configuration, and runs the deployment command on that same EC2 host.
+- **EC2 IAM role:** Supplies AWS permissions used by the backend to query CloudWatch. It is attached to the EC2 host, not a separate application container or server.
+
+**Deployment destination:** the existing EC2 instance `cloudops-intelligence-server` (`i-01d84b19a86a4b42d`) in `us-east-1`. The browser reaches the application at the EC2 public address over HTTP port 80. GitHub stores the source and workflow; EC2 runs the deployed application.
 
 ## What the dashboard includes
 
