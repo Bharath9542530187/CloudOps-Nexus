@@ -2,68 +2,76 @@
 
 ### AWS Cloud Infrastructure Monitoring & Incident Management Platform
 
-CloudOps Nexus is a web-based cloud operations dashboard that brings AWS infrastructure visibility and incident tracking into one interface. It combines a React frontend, a Python FastAPI backend, PostgreSQL storage, and Amazon CloudWatch metrics.
+CloudOps Nexus is a cloud operations dashboard built with React, FastAPI, and PostgreSQL. Its backend includes incident-management endpoints and an AWS CloudWatch monitoring endpoint for EC2 CPU, memory, and disk metrics.
 
-> **Project scope:** This repository contains the application source code and documentation for the current working demonstration. Features marked as planned are design extensions and are not presented as completed integrations.
+## Project Overview
 
-## Overview
-
-CloudOps Nexus provides a central interface for:
-- Viewing infrastructure monitoring information.
-- Retrieving EC2 CPU, memory, and disk utilization metrics from Amazon CloudWatch.
-- Creating and listing operational incidents.
-- Storing incident records in PostgreSQL.
-- Viewing information through a React dashboard with a dark interface.
-
-## Architecture
-
-```mermaid
-flowchart LR
-    U[User / Browser] --> FE[React + Vite Frontend]
-    FE -->|HTTP JSON requests| API[FastAPI Backend]
-    API -->|SQLAlchemy| DB[(PostgreSQL)]
-    API -->|Boto3 API calls| CW[Amazon CloudWatch]
-    EC2[Amazon EC2] -->|CPU metrics| CW
-    AG[CloudWatch Agent] -->|Memory and disk metrics| CW
-    ROLE[EC2 IAM Role] -. authorizes .-> API
-```
-
-See [Architecture](docs/architecture.md) and [Application Workflow](docs/workflow.md) for the detailed explanation.
+The project brings a dashboard interface, incident record management, and AWS monitoring API functionality into one application structure.
 
 ## Technology Stack
 
 | Area | Technology | Purpose |
 |---|---|---|
-| Frontend | React, Vite, CSS | Dashboard and user interface |
-| Backend | Python, FastAPI | REST API and application logic |
-| Database | PostgreSQL | Incident data storage |
-| ORM | SQLAlchemy | Database models and queries |
-| AWS SDK | Boto3 | Read CloudWatch metrics |
-| Monitoring | Amazon CloudWatch, CloudWatch Agent | CPU, memory, and disk metrics |
-| Compute | Amazon EC2 | Hosts the API in the demonstration setup |
-| Version control | Git, GitHub | Source code and project history |
+| Frontend | React, Vite, CSS | Dashboard interface |
+| Backend | Python, FastAPI | REST API |
+| Database | PostgreSQL | Incident storage |
+| ORM | SQLAlchemy | Database operations |
+| AWS SDK | Boto3 | CloudWatch API calls |
+| Monitoring | Amazon CloudWatch, CloudWatch Agent | EC2 and operating-system metrics |
+| Compute | Amazon EC2 | Demonstrated backend host |
+| Version control | Git, GitHub | Source control |
 
-## Implemented in the current project
+## Current Implementation
 
-- React-based dashboard and dark interface.
-- FastAPI application with health and monitoring endpoints.
-- Incident creation through `POST /incidents`.
-- Incident listing through `GET /incidents`.
-- PostgreSQL incident model and SQLAlchemy database integration.
-- Monitoring endpoint that queries CloudWatch for EC2 CPU, memory, and disk utilization.
-- EC2 monitoring setup with an IAM role and CloudWatch Agent for memory and disk metrics.
+- React dashboard layout with navigation and light/dark theme toggle.
+- FastAPI home and health endpoints.
+- Incident creation and listing endpoints using PostgreSQL and SQLAlchemy.
+- A backend `GET /monitoring` endpoint that queries CloudWatch for CPU, memory, and disk metrics.
+- EC2 monitoring configuration using an IAM role and CloudWatch Agent in the demonstrated AWS environment.
 
-## Planned extensions
+## Current Frontend Scope
 
-These are documented as future improvements and are **not claimed as implemented**:
-- Docker packaging of the application services and Docker Compose orchestration.
-- GitHub Actions automated testing/build/deployment pipeline.
-- SNS-based email notifications for incidents or metric thresholds.
-- AWS Cost Explorer integration for cost reporting.
-- Production-grade deployment automation and service supervision.
-- Expanded incident lifecycle operations (for example, update, assign, resolve).
+The current React source connects the incident page and dashboard incident count to `http://127.0.0.1:8000/incidents`. The monitoring and cost pages are currently interface placeholders. The dashboard's CPU, memory, and disk cards also display placeholder values; the React source does not yet call the backend `/monitoring` endpoint.
 
-## Repository structure
+The backend monitoring endpoint is implemented separately and can be tested through the FastAPI API, subject to valid AWS credentials/role permissions and matching CloudWatch metric dimensions.
+
+## Planned Improvements
+
+- Connect the React monitoring page and dashboard metric cards to `GET /monitoring`.
+- Configure the frontend API base URL through environment configuration instead of hardcoding localhost.
+- Implement AWS Cost Explorer reporting.
+- Implement SNS notifications.
+- Add incident update and resolution operations.
+- Containerize the full application with Docker Compose.
+- Add automated tests and a GitHub Actions CI/CD pipeline.
+- Configure persistent process supervision and production deployment security.
+
+## Architecture
+
+```mermaid
+flowchart TB
+    USER[User / Browser] --> UI[React + Vite Frontend]
+    UI -->|Incident API calls| API[FastAPI Backend]
+    API -->|SQLAlchemy| DB[(PostgreSQL)]
+    API -->|Boto3 CloudWatch queries| CW[Amazon CloudWatch]
+    EC2[EC2 Instance] -->|CPU metrics| CW
+    AGENT[CloudWatch Agent] -->|Memory and disk metrics| CW
+    ROLE[EC2 IAM Role] -. AWS permissions .-> API
+```
+
+The CloudWatch path exists in the backend API. Connecting those metric responses to the React monitoring screens remains a planned frontend integration.
+
+## API Endpoints
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/` | Basic application response |
+| GET | `/health` | Health status |
+| GET | `/monitoring` | Retrieve CloudWatch CPU, memory, and disk metrics |
+| POST | `/incidents` | Create an incident |
+| GET | `/incidents` | List incidents |
+
+## Repository Structure
 
 ```text
 CloudOps-Nexus/
@@ -88,70 +96,56 @@ CloudOps-Nexus/
 └── README.md
 ```
 
-## Run locally
+## Local Development
 
 ### Prerequisites
-- Python 3.10+ (use a version compatible with the installed backend dependencies).
+- Python and pip.
 - Node.js and npm.
 - PostgreSQL.
-- AWS credentials or an attached EC2 IAM role with permission to read the required CloudWatch metrics, when testing monitoring.
+- AWS credentials or an EC2 IAM role with the CloudWatch read permissions required by the monitoring endpoint.
 
 ### Backend
-1. Create a PostgreSQL database.
-2. Configure `DATABASE_URL` in a local `.env` file using the format in `.env.example`.
-3. Install the backend dependencies required by the project.
-4. From the backend directory, start the FastAPI application:
+
+The backend imports FastAPI, SQLAlchemy, python-dotenv, Boto3, and Botocore. Install the corresponding Python packages in your environment, configure `DATABASE_URL` in a local `.env` file, then run from the `backend` directory:
 
 ```bash
 python -m uvicorn main:app --reload
 ```
 
-The API documentation is available at `http://127.0.0.1:8000/docs` while the backend is running.
+FastAPI's interactive API documentation is available at `http://127.0.0.1:8000/docs`.
 
 ### Frontend
-From the frontend directory:
+
+Run from the `frontend` directory:
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open the local URL printed by Vite in the terminal. Configure the frontend API base URL to point to the running FastAPI backend if the application configuration requires it.
-
-> The repository's current backend source expects a configured database URL. CloudWatch monitoring also requires valid AWS access and the configured region/instance dimensions. Local startup alone does not guarantee that AWS metrics will be available.
-
-## API endpoints
-
-| Method | Endpoint | Purpose |
-|---|---|---|
-| GET | `/` | Basic application response |
-| GET | `/health` | Health status |
-| GET | `/monitoring` | Retrieve CloudWatch CPU, memory, and disk metrics |
-| POST | `/incidents` | Create an incident |
-| GET | `/incidents` | List incidents |
+The current frontend incident requests use `http://127.0.0.1:8000`. The API must be running at that address for incident creation and listing to work.
 
 ## Documentation
 
 - [System Architecture](docs/architecture.md)
 - [Application Workflow](docs/workflow.md)
-- [AWS Services and Monitoring](docs/aws-services.md)
-- [Docker and CI/CD – Future Design](docs/docker-and-cicd.md)
+- [AWS Services](docs/aws-services.md)
+- [Docker and GitHub Actions – Future Design](docs/docker-and-cicd.md)
 - [Interview Preparation](docs/interview-preparation.md)
-- [Dashboard Screenshots](docs/screenshots/README.md)
+- [Application Screenshots](docs/screenshots/README.md)
 
-## Security notes
+## Security and Deployment Notes
 
-- Never commit `.env`, AWS access keys, private keys, database passwords, or other secrets.
-- Use an EC2 IAM role instead of hardcoding AWS credentials on EC2.
-- Restrict inbound network rules to the minimum required sources.
-- Replace demonstration-specific AWS resource identifiers with configuration/environment variables before reusing the project in another account.
-- The current source contains an EC2 instance identifier and a fixed AWS region for its monitoring query; treat these as deployment configuration to externalize before production use.
+- Do not commit `.env`, AWS access keys, private keys, or database passwords.
+- Use an EC2 IAM role instead of hardcoding AWS credentials.
+- Restrict security group rules to required sources and ports.
+- The current backend source contains a fixed AWS region and EC2 instance identifier. These should be moved into environment configuration before reuse.
+- The current frontend uses a localhost API URL; configure a deployment-specific API base URL before hosting the frontend separately.
+- The demonstration API process was started manually. Persistent process supervision, HTTPS, and high availability are not configured.
 
-## Project status and limitations
+## Project Status
 
-The repository includes the frontend and backend source, incident API/database code, and CloudWatch metric retrieval logic. The demonstrated monitoring setup uses EC2, IAM permissions, and the CloudWatch Agent. The API process in the demonstration was started manually; automatic process supervision, high availability, and production deployment automation are not included.
-
-SNS notifications, Cost Explorer, Docker Compose for the full application, and GitHub Actions CI/CD are future enhancements. Dashboard screenshots should be added to `docs/screenshots/` after capturing them from the actual running application.
+The repository contains the React interface, incident API/database code, and a backend CloudWatch metric retrieval endpoint. The frontend monitoring and cost screens are not yet connected to live data. Docker Compose for the full application, GitHub Actions CI/CD, SNS notifications, and Cost Explorer reporting are not implemented.
 
 ## Author
 
