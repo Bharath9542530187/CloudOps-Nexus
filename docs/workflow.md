@@ -1,13 +1,16 @@
 # CloudOps Nexus – Application Workflow
 
-## 1. Application startup
-1. Start PostgreSQL and create the application database.
-2. Configure DATABASE_URL in a local .env file using .env.example as a template.
-3. Start the FastAPI backend.
-4. Start the React/Vite development server separately.
-5. Open the Vite URL in a browser.
+## Application Startup
 
-## 2. Monitoring workflow
+The application consists of two separately started parts: the FastAPI backend and the React/Vite frontend. PostgreSQL must be available before the backend can use incident storage.
+
+1. PostgreSQL is started and the application database is configured.
+2. The backend reads its database connection string from environment configuration.
+3. FastAPI starts and connects to PostgreSQL through SQLAlchemy.
+4. The React/Vite development server starts separately.
+5. The browser loads the dashboard.
+
+## Infrastructure Monitoring
 
 ```mermaid
 sequenceDiagram
@@ -26,15 +29,15 @@ sequenceDiagram
     UI-->>User: Display metrics
 ```
 
-| Metric | Namespace | Source |
+| Metric | CloudWatch Namespace | Source |
 |---|---|---|
 | CPUUtilization | AWS/EC2 | EC2 monitoring |
 | mem_used_percent | CWAgent | CloudWatch Agent |
 | disk_used_percent | CWAgent | CloudWatch Agent |
 
-The backend requests recent datapoints and selects the newest timestamp. If no datapoint exists, the metric value and timestamp are returned as null.
+The backend requests recent datapoints and selects the newest timestamp. If no datapoint is available, the metric value and timestamp are returned as null.
 
-## 3. Create incident workflow
+## Incident Creation
 
 ```mermaid
 sequenceDiagram
@@ -48,32 +51,33 @@ sequenceDiagram
     API->>DB: Insert using SQLAlchemy
     DB-->>API: Saved record
     API-->>UI: Return incident JSON
-    UI-->>User: Show result
+    UI-->>User: Display result
 ```
 
-## 4. List incidents
-1. React requests GET /incidents.
+## Incident Listing
+
+1. React requests `GET /incidents`.
 2. FastAPI opens a database session.
 3. SQLAlchemy queries the incidents table.
-4. FastAPI returns records as JSON.
-5. React renders the list.
+4. FastAPI returns the records as JSON.
+5. React renders the incident list.
 
-## 5. API endpoints
+## API Endpoints
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| GET | / | Basic application response |
-| GET | /health | Health status |
-| GET | /monitoring | CloudWatch CPU, memory, and disk metrics |
-| POST | /incidents | Create an incident |
-| GET | /incidents | List incidents |
+| GET | `/` | Basic application response |
+| GET | `/health` | Health status |
+| GET | `/monitoring` | CloudWatch CPU, memory, and disk metrics |
+| POST | `/incidents` | Create an incident |
+| GET | `/incidents` | List incidents |
 
-## 6. Operational considerations
-- DATABASE_URL must be configured before backend startup.
-- The backend needs AWS permissions to read CloudWatch metrics.
-- CloudWatch Agent must be running and publishing guest OS metrics.
-- Metrics can be delayed or temporarily unavailable.
-- The demonstrated API process was started manually and does not automatically restart after a reboot.
+## Operational Notes
 
-## 7. Future workflows – not implemented
-SNS notifications, Cost Explorer reporting, incident update/assignment/resolution endpoints, automated tests, container builds, and CI/CD deployment are future enhancements.
+The backend requires a valid `DATABASE_URL` and AWS permissions to read CloudWatch metrics. The CloudWatch Agent must be running and publishing memory and disk metrics. Metric publication can be delayed, and datapoints may temporarily be unavailable.
+
+The demonstration API process was started manually. Automatic restart after a reboot or persistent process supervision is not configured.
+
+## Future Capabilities
+
+Incident updates and resolution, SNS notifications, Cost Explorer reporting, automated tests, container builds, and CI/CD deployment are not included in the current implementation.

@@ -1,22 +1,17 @@
-# CloudOps Nexus – Dashboard Screenshots
+# CloudOps Nexus – Application Screenshots
 
-Add screenshots captured from the actual running application to this folder.
+This section presents the main screens of the CloudOps Nexus application.
 
-## Recommended screenshots
-1. `dashboard.png` – Main dashboard overview.
-2. `monitoring.png` – CPU, memory, and disk monitoring view.
-3. `incidents.png` – Incident creation/list view with safe sample data.
-4. `dark-mode.png` – Dark interface, if it shows a useful separate view.
+## Dashboard
+The dashboard provides a central view of cloud operations and incident information.
 
-## How to add them
-1. Run the application and open each page.
-2. Capture clear screenshots at a readable browser size.
-3. Hide public IP addresses, AWS account IDs, credentials, personal data, and other sensitive information.
-4. Save images in this folder using the filenames above.
-5. Reference them in the root README, for example:
+## Infrastructure Monitoring
+The monitoring view displays EC2 CPU utilization, memory usage, and disk usage retrieved from Amazon CloudWatch.
 
-```markdown
-![CloudOps Nexus dashboard](docs/screenshots/dashboard.png)
-```
+## Incident Management
+The incident view provides incident creation and listing through the FastAPI backend and PostgreSQL database.
 
-Only use real screenshots from the running application. Do not use mockups as evidence of implemented features.
+## Interface
+The application includes a dark interface for the dashboard.
+
+Screenshots in this directory represent the running application. Sensitive infrastructure identifiers and personal information are excluded.

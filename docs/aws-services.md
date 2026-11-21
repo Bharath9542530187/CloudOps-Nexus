@@ -1,47 +1,49 @@
 # CloudOps Nexus – AWS Services
 
 ## Amazon EC2
-Amazon Elastic Compute Cloud provides virtual servers in AWS. In the demonstration, EC2 hosted the FastAPI backend and was the instance being monitored.
+
+Amazon Elastic Compute Cloud provides virtual servers in AWS. In CloudOps Nexus, EC2 hosts the demonstrated FastAPI backend and is the infrastructure instance being monitored.
 
 ## Amazon CloudWatch
-CloudWatch stores and provides access to monitoring metrics. The backend reads the following:
 
-| Metric | Namespace | Meaning |
+Amazon CloudWatch collects and provides access to monitoring metrics. CloudOps Nexus retrieves the following metrics:
+
+| Metric | Namespace | Description |
 |---|---|---|
 | CPUUtilization | AWS/EC2 | Percentage of allocated CPU being used |
 | mem_used_percent | CWAgent | Percentage of memory used |
 | disk_used_percent | CWAgent | Percentage of disk space used |
 
 ## CloudWatch Agent
-The CloudWatch Agent runs on the EC2 operating system and collects guest operating system metrics such as memory and disk utilization. It publishes these values to the CWAgent namespace.
 
-## IAM role
-An IAM role attached to EC2 supplies temporary AWS credentials and permissions to software running on the instance. This avoids storing long-lived access keys in source code. Permissions should follow least privilege.
+The CloudWatch Agent runs on the EC2 operating system and collects guest operating system metrics, including memory and disk utilization. It publishes these metrics to the CWAgent namespace.
+
+## AWS IAM Role
+
+An IAM role attached to EC2 provides temporary AWS credentials and permissions to applications running on the instance. This avoids storing long-lived access keys in source code. The role should follow the principle of least privilege.
 
 ## Boto3
-Boto3 is the AWS SDK for Python. The FastAPI backend uses a Boto3 CloudWatch client and calls get_metric_statistics to retrieve recent datapoints.
 
-## Monitoring request path
-1. React calls GET /monitoring.
-2. FastAPI creates a CloudWatch client in the configured region.
-3. Boto3 obtains credentials through the AWS credential provider chain (on EC2, normally the attached role).
-4. CloudWatch returns datapoints.
-5. FastAPI selects the latest datapoint and returns JSON.
+Boto3 is the AWS SDK for Python. The FastAPI backend uses a Boto3 CloudWatch client and the `get_metric_statistics` operation to retrieve recent metric datapoints.
 
-## Security and configuration
-- Never commit AWS access keys or secrets.
-- Prefer an attached IAM role on EC2.
-- Restrict security group inbound rules to required sources.
-- Move the current source's fixed region and EC2 instance identifier into environment-based configuration before reuse.
-- Ensure metric dimensions match the CloudWatch Agent configuration.
+## Monitoring Request Flow
 
-## Planned AWS integrations – not implemented
+1. React calls the FastAPI `GET /monitoring` endpoint.
+2. FastAPI creates a CloudWatch client in the configured AWS region.
+3. Boto3 obtains credentials through the AWS credential provider chain; on EC2, these normally come from the attached IAM role.
+4. CloudWatch returns the requested datapoints.
+5. FastAPI selects the latest datapoint and returns the result as JSON.
 
-### Amazon SNS
-Could send email notifications when an incident is created or a metric threshold is crossed. SNS notifications are not currently integrated.
+## Security and Configuration
 
-### AWS Cost Explorer
-Could provide cost and usage reporting for a cost dashboard. Cost Explorer API integration is not currently implemented.
+- AWS access keys and secrets are not stored in source code.
+- An EC2 IAM role is preferred over long-lived access keys.
+- Security group rules should expose only the required ports to trusted sources.
+- The AWS region and EC2 instance identifier in the current source should be moved into environment-based configuration before reuse.
+- CloudWatch metric dimensions must match the CloudWatch Agent configuration.
 
-### Production deployment improvements
-HTTPS, persistent process supervision, load balancing, managed secrets, and automated deployment are future improvements.
+## Planned AWS Integrations
+
+Amazon SNS email notifications and AWS Cost Explorer reporting are potential extensions. Neither integration is part of the current working implementation.
+
+HTTPS, persistent process supervision, load balancing, managed secrets, and automated deployment are also production-readiness improvements.

@@ -1,16 +1,17 @@
-# Docker and GitHub Actions – Future Design
+# Docker and GitHub Actions – Future Enhancements
 
-> **Status: Planned.** The complete CloudOps Nexus application is not currently containerized, and a GitHub Actions CI/CD workflow has not been implemented. This document describes a possible future design only.
+Docker and GitHub Actions are not implemented in the current CloudOps Nexus application. The following sections describe how they could extend the project.
 
 ## Docker
+
 Docker packages an application and its dependencies into an image. A container is a running instance of an image.
 
-A future setup could run:
-- React/Vite frontend container.
-- FastAPI backend container.
-- PostgreSQL container for local development.
+A containerized version of CloudOps Nexus could separate the application into:
+- A React/Vite frontend container.
+- A FastAPI backend container.
+- A PostgreSQL container for local development.
 
-## Proposed Docker Compose layout
+## Proposed Docker Compose Architecture
 
 ```mermaid
 flowchart TB
@@ -19,11 +20,13 @@ flowchart TB
     A --> D[(PostgreSQL Container)]
 ```
 
-Docker Compose could define these services in one YAML file, provide environment variables, and use a named volume for database persistence.
+Docker Compose could define the services in one YAML file, configure their environment variables, and provide persistent database storage through a named volume.
 
-A PostgreSQL container was used locally during development. This does not mean the entire frontend/backend/database stack has already been containerized.
+A PostgreSQL container was used during local development. The frontend, backend, and database have not been packaged together as a complete Docker Compose application.
 
-## GitHub Actions – proposed CI/CD
+## GitHub Actions CI/CD
+
+GitHub Actions could automate quality checks and deployment when code is pushed or a pull request is opened.
 
 ```mermaid
 flowchart TD
@@ -36,16 +39,18 @@ flowchart TD
     R --> D[Deploy to AWS]
 ```
 
-Possible stages:
+A future pipeline could:
 1. Check out the repository.
 2. Install Python and Node.js dependencies.
-3. Run backend tests and frontend lint/build checks.
+3. Run backend tests and frontend checks.
 4. Build Docker images.
-5. Publish images to a registry.
+5. Publish images to a container registry.
 6. Deploy to AWS after required approvals.
 
 ## Security
-Do not put AWS keys or database passwords in workflow files. Use GitHub Actions secrets or AWS OIDC with a narrowly scoped IAM role.
 
-## Interview explanation
-"Docker and GitHub Actions are planned improvements. I documented how I would containerize the application services and automate tests, builds, image publishing, and deployment. These workflows are not implemented in the current version."
+Workflow secrets should not be stored in repository files. GitHub Actions secrets or AWS OIDC with a narrowly scoped IAM role can be used for deployment credentials.
+
+## Interview Summary
+
+Docker and GitHub Actions are planned improvements. The proposed design separates application services into containers and automates testing, building, image publishing, and deployment. No working CI/CD pipeline is included in this version.
