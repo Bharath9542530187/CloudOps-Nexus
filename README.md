@@ -1,161 +1,194 @@
 # CloudOps Nexus
 
-CloudOps Nexus is a small AWS operations dashboard built to bring EC2 monitoring and incident tracking into one place. The web interface is built with React, the API uses FastAPI, and PostgreSQL keeps the incident records. AWS CloudWatch supplies the instance metrics shown by the dashboard.
+CloudOps Nexus is a cloud operations dashboard. It shows the CPU, memory and disk usage of an EC2 instance, and lets you create and view incidents, all in one place.
+
+- Frontend: React (built with Vite), served by Nginx
+- Backend: Python + FastAPI
+- Database: PostgreSQL (stores the incidents)
+- Metrics: AWS CloudWatch
+- Run with: Docker and Docker Compose
+- Deploy with: GitHub Actions on a self-hosted runner
+- Host: one AWS EC2 instance
 
 ## Architecture
 
-CloudOps Nexus is hosted on one existing Amazon EC2 instance. **EC2 is the deployment host for the complete application.** Docker Compose runs the frontend, backend, and database as three containers on that instance.
+Everything runs on one EC2 instance. Docker Compose starts three containers on it: frontend, backend and database. The same instance also hosts the GitHub Actions runner, and it is the instance being monitored.
 
+I split this into two diagrams, because runtime traffic and deployment are not the same flow.
+
+### 1. Runtime (what happens when someone uses the app)
 ```mermaid
-flowchart TB
+flowchart LR
     Browser[User browser]
 
-    subgraph EC2["AWS EC2 instance — CloudOps Nexus deployment host"]
+    subgraph EC2["AWS EC2 instance - cloudops-intelligence-server"]
       direction TB
 
-      subgraph APP["Docker Compose — cloudops network"]
+      subgraph APP["Docker Compose - private network: cloudops"]
         direction TB
-        Nginx["Frontend container<br/>React + Nginx<br/>Host port 80"]
-        API["Backend container<br/>FastAPI :8000"]
-        DB[("Database container<br/>PostgreSQL :5432")]
-        VOL[("Persistent volume<br/>postgres_data")]
+        FE["Frontend container<br/>React + Nginx<br/>port 80 (public)"]
+        BE["Backend container<br/>FastAPI :8000<br/>(internal only)"]
+        DB[("Database container<br/>PostgreSQL :5432<br/>(internal only)")]
+        VOL[("Volume<br/>postgres_data")]
 
-        Nginx -->|/api requests| API
-        API -->|Incident data| DB
+        FE -->|/api/ requests| BE
+        BE -->|incident data| DB
         DB --- VOL
       end
 
-      Runner["GitHub Actions self-hosted runner"]
-      Runner -->|Runs docker-compose up --build| APP
+      AGENT["CloudWatch Agent"]
+      ROLE["IAM role"]
     end
 
-    Browser -->|HTTP to EC2 public IP :80| Nginx
+    CW["Amazon CloudWatch"]
 
-    API -->|Reads CPU, memory and disk metrics| CW["Amazon CloudWatch"]
-    ROLE["IAM role attached to EC2"] -.->|Grants AWS permissions| API
-    GitHub["GitHub repository<br/>push to main"] -->|Triggers workflow| Runner
+    Browser -->|"HTTP :80 (security group allows it)"| FE
+    BE -->|"Boto3 reads CPU, memory, disk"| CW
+    AGENT -->|"sends memory and disk (CWAgent)"| CW
+    ROLE -.->|"gives permission to read CloudWatch"| BE
 ```
 
-### How the components work together
+Notes on this diagram:
 
-- **EC2:** Hosts the Docker Engine, the self-hosted GitHub Actions runner, and all three application containers.
-- **Frontend container:** Nginx serves the React production build on port 80. It forwards requests under `/api/` to FastAPI.
-- **Backend container:** FastAPI handles incident requests and retrieves EC2 CPU, memory, and disk metrics from CloudWatch using Boto3.
-- **Database container:** PostgreSQL stores incident records. The `postgres_data` volume keeps database files when containers are recreated.
-- **Docker Compose:** Connects the frontend, backend, and database through the private `cloudops` bridge network. Only the frontend publishes a host port (`80:80`); ports 8000 and 5432 are not published to the host.
-- **GitHub Actions runner:** Runs on the EC2 instance. A push to `main` triggers the workflow, which checks the code, builds the frontend, validates the Compose configuration, and runs the deployment command on that same EC2 host.
-- **EC2 IAM role:** Supplies AWS permissions used by the backend to query CloudWatch. It is attached to the EC2 host, not a separate application container or server.
+- Only port 80 is open to the internet. Ports 8000 and 5432 stay inside the Docker network.
+- CPU comes from the `AWS/EC2` namespace. EC2 sends it to CloudWatch by itself.
+- Memory and disk come from the `CWAgent` namespace. The CloudWatch Agent on the instance sends them.
+- The backend only reads the metrics. It uses the IAM role on the instance, so no AWS keys are inside the app.
+- The React app never talks to PostgreSQL or CloudWatch directly. It only calls the backend through `/api/`.
 
-**Deployment destination:** the existing EC2 instance `cloudops-intelligence-server` (`i-01d84b19a86a4b42d`) in `us-east-1`. The browser reaches the application at the EC2 public address over HTTP port 80. GitHub stores the source and workflow; EC2 runs the deployed application.
+### 2. Deployment (what happens when I push code)
+```mermaid
+flowchart LR
+    Push["Push to main<br/>(or manual run)"] -.-> Runner["GitHub Actions<br/>self-hosted runner on EC2"]
+    Runner -.-> S1["Checkout code"]
+    S1 -.-> S2["Backend syntax check"]
+    S2 -.-> S3["Frontend build<br/>(npm ci + Vite)"]
+    S3 -.-> S4["Copy .env from EC2<br/>and check variables"]
+    S4 -.-> S5["docker-compose config -q"]
+    S5 -.-> S6["docker-compose up -d<br/>--build --remove-orphans"]
+    S6 -.-> S7["docker-compose ps"]
+```
 
-## What the dashboard includes
+The dashed lines mean deployment steps, not user traffic.
 
-- EC2 CPU utilization from the `AWS/EC2` CloudWatch namespace.
-- Memory and disk utilization from the `CWAgent` namespace.
-- Incident creation and incident listing backed by PostgreSQL.
-- Light and dark dashboard themes.
+## How a request works
 
-This version does not include Cost Explorer reporting, user authentication, incident editing or deletion, or notification delivery.
+1. The user opens the EC2 public IP in a browser.
+2. The request comes in on port 80 and reaches the frontend container.
+3. Nginx serves the React app.
+4. React asks for data through `/api/`.
+5. Nginx passes that request to FastAPI inside the Docker network.
+6. FastAPI gets the metrics from CloudWatch and the incidents from PostgreSQL.
+7. FastAPI sends the response back and React shows it on the dashboard.
 
-## Technology used
+To create an incident, React sends a POST request. FastAPI saves it in PostgreSQL and returns the new record.
 
-| Part | Implementation |
-|---|---|
-| Web interface | React and Vite |
-| Web server / reverse proxy | Nginx |
-| API | Python and FastAPI |
-| AWS metrics | Boto3 and Amazon CloudWatch |
-| Database | PostgreSQL and SQLAlchemy |
-| Packaging and runtime | Docker and Docker Compose |
-| Hosting | Amazon EC2 (Amazon Linux 2023) |
-| Automation | GitHub Actions with a self-hosted EC2 runner |
+## What the dashboard has
 
-## AWS deployment
+- CPU utilization (`AWS/EC2`)
+- Memory and disk utilization (`CWAgent`)
+- Create and list incidents (PostgreSQL)
+- Light and dark theme
 
-CloudOps Nexus is deployed to the existing EC2 instance below. The workflow updates this server; it does not provision a replacement instance.
+Not included in this version: Cost Explorer, login, editing or deleting incidents, and notifications.
 
-| Detail | Value |
-|---|---|
+## API routes
+
+Nginx sends everything under `/api` to the backend.
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| GET | `/api/health` | Check the backend is up |
+| GET | `/api/monitoring` | Get CPU, memory and disk metrics |
+| GET | `/api/incidents` | List incidents |
+| POST | `/api/incidents` | Create an incident |
+
+## Deployment details
+
+| Item | Value |
+| --- | --- |
 | EC2 instance name | `cloudops-intelligence-server` |
 | Instance ID | `i-01d84b19a86a4b42d` |
-| AWS Region | `us-east-1` (N. Virginia) |
-| Operating system | Amazon Linux 2023 |
-| Public-facing container | Frontend / Nginx |
-| Published port | TCP 80 |
-| Deployment runner | `cloudops-ec2-runner` (self-hosted) |
+| Region | `us-east-1` |
+| OS | Amazon Linux 2023 |
+| Public port | TCP 80 (frontend / Nginx) |
+| Runner | `cloudops-ec2-runner` (self-hosted) |
 
-The GitHub Actions runner is installed on the EC2 host. On a push to `main`, the workflow checks out the new revision in the runner workspace, checks the backend Python syntax, builds the Vite frontend, and validates the Compose configuration. It then copies the server-side environment file from `/home/ec2-user/cloudops-backend/.env` into the workflow workspace and starts the updated services with Docker Compose.
+The workflow updates this existing server. It does not create a new one.
 
-The environment file contains the database configuration and the AWS region, EC2 instance ID, and CloudWatch Agent disk dimensions used by the monitoring endpoint. It stays on the EC2 host and is not stored in the repository. The EC2 instance role is used for AWS API access.
+**EC2 setup that was done:**
 
-For browser access, the EC2 security group needs an inbound HTTP rule for TCP port 80. SSH (TCP 22) should remain limited to trusted administrator addresses. Do not expose ports 8000 or 5432 to the public internet. A successful CI/CD run confirms that the deployment commands and containers completed; it does not by itself confirm that the website is reachable from every browser or network.
+- Installed Docker and Docker Compose
+- Attached the IAM role for CloudWatch access
+- Installed the CloudWatch Agent for memory and disk metrics
+- Set up the GitHub Actions self-hosted runner
+- Created the private `.env` file at `/home/ec2-user/cloudops-backend/.env`
+
+**The `.env` file** has the database settings, the AWS region, the EC2 instance ID and the CloudWatch Agent disk settings. It stays on the EC2 server and is never committed to GitHub. The workflow copies it into the workspace during deployment.
+
+**Security group:**
+
+- Allow inbound HTTP 80 so the website can open
+- Keep SSH 22 only for trusted IP addresses
+- Do not open ports 8000 or 5432 to the internet
+
+**Things to remember:**
+
+- The backend runs inside a container, so if CloudWatch gives credential errors, check that the instance metadata hop limit is set to 2.
+- The public IP changes after a stop and start. Use an Elastic IP if you want it fixed.
+- The runner is on the same server as the app, so only trusted code should trigger it.
+
+## Current status
+
+GitHub Actions Run #8 passed. The frontend, backend and database containers are running, the database is healthy, and port `80:80` is published.
+
+**Known issue:** the browser test to the EC2 public IP timed out. So the pipeline works, but opening the site from the internet is not confirmed yet. Check the security group rule for port 80, the public IP, and use `http://` (not `https://`). Also run `curl http://localhost` on the server. Remove this note once the site opens.
 
 ## Docker Compose
 
-The Compose file defines the three services and their relationship:
+`docker-compose.yml` has three services:
 
-- `database` uses `postgres:16-alpine`, checks readiness with `pg_isready`, and stores data in `postgres_data`.
-- `backend` is built from `backend/` and starts after the database reports healthy.
-- `frontend` is built from `frontend/`, serves on host port 80, and sends API traffic through Nginx to the backend.
+- `database` uses `postgres:16-alpine`, has a `pg_isready` health check, and saves data in `postgres_data`
+- `backend` is built from `backend/` and waits until the database is healthy
+- `frontend` is built from `frontend/`, publishes port 80, and passes `/api/` to the backend
 
-The application reads its configuration from environment variables. The tracked `.env.example` shows the required names; use real values only in a private `.env` file. Never commit that private file or put its password in an issue, screenshot, or log.
+All three run on the private `cloudops` network.
 
-### Start the stack
-
-For a local machine with the Docker Compose v2 plugin, use:
-
+### Run locally
 ```bash
 cp .env.example .env
-# Set the values in .env before starting the services.
+# fill in the values in .env
 docker compose up -d --build
 ```
 
-The EC2 runner currently uses the standalone `docker-compose` command. Its deployment workflow runs:
+### Run on EC2
 
+The EC2 server uses the older `docker-compose` command, and the workflow runs:
 ```bash
 docker-compose config -q
 docker-compose up -d --build --remove-orphans
 docker-compose ps
 ```
 
-### Check and stop services
+### Check and stop
 
-Use the Compose command installed on the machine:
-
+Use `docker compose` locally or `docker-compose` on EC2:
 ```bash
 docker compose ps
 docker compose logs -f
 docker compose down
 ```
 
-On the EC2 host, the equivalent command name is `docker-compose`:
+`down` removes the containers and network but keeps the `postgres_data` volume. Do not add `-v` unless you really want to delete all the incidents.
 
-```bash
-docker-compose ps
-docker-compose logs -f
-docker-compose down
-```
+Never commit the real `.env` file or share its password in screenshots or logs.
 
-The normal `down` command removes the containers and network but leaves the `postgres_data` volume intact. Removing that volume would also remove the stored incident records, so do not add the `-v` option unless deleting the database is intentional.
-
-## API routes
-
-Nginx exposes these backend routes under `/api`:
-
-| Method | Route | Use |
-|---|---|---|
-| GET | `/api/health` | Check that the API responds |
-| GET | `/api/monitoring` | Retrieve CPU, memory, and disk metrics |
-| GET | `/api/incidents` | List saved incidents |
-| POST | `/api/incidents` | Create an incident |
-
-## Repository layout
-
+## Project structure
 ```text
-backend/                 FastAPI code, database models, and backend Dockerfile
-frontend/                React app, Nginx configuration, and frontend Dockerfile
-.github/workflows/       GitHub Actions deployment workflow
-docker-compose.yml       Frontend, backend, and database services
-.env.example             Names and example values for required configuration
-docs/                    Project documentation
+backend/                 FastAPI code, models, backend Dockerfile
+frontend/                React app, nginx.conf, frontend Dockerfile
+.github/workflows/       deploy.yml (GitHub Actions)
+docker-compose.yml       frontend, backend and database services
+.env.example             names of the required settings
+docs/                    project documentation
 ```
