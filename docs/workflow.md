@@ -2,42 +2,13 @@
 
 ## Application Startup
 
-The application consists of two separately started parts: the FastAPI backend and the React/Vite frontend. PostgreSQL must be available before the backend can use incident storage.
-
 1. PostgreSQL is started and the application database is configured.
-2. The backend reads its database connection string from environment configuration.
-3. FastAPI starts and connects to PostgreSQL through SQLAlchemy.
+2. The backend reads `DATABASE_URL` from environment configuration.
+3. FastAPI connects to PostgreSQL through SQLAlchemy.
 4. The React/Vite development server starts separately.
 5. The browser loads the dashboard.
 
-## Infrastructure Monitoring
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant UI as React
-    participant API as FastAPI
-    participant CW as CloudWatch
-    participant Agent as CloudWatch Agent
-    User->>UI: Open monitoring page
-    UI->>API: GET /monitoring
-    API->>CW: Request CPU metric
-    Agent->>CW: Publish memory and disk metrics
-    API->>CW: Request memory and disk metrics
-    CW-->>API: Metric datapoints
-    API-->>UI: JSON values and timestamps
-    UI-->>User: Display metrics
-```
-
-| Metric | CloudWatch Namespace | Source |
-|---|---|---|
-| CPUUtilization | AWS/EC2 | EC2 monitoring |
-| mem_used_percent | CWAgent | CloudWatch Agent |
-| disk_used_percent | CWAgent | CloudWatch Agent |
-
-The backend requests recent datapoints and selects the newest timestamp. If no datapoint is available, the metric value and timestamp are returned as null.
-
-## Incident Creation
+## Incident Management Workflow
 
 ```mermaid
 sequenceDiagram
@@ -45,22 +16,42 @@ sequenceDiagram
     participant UI as React
     participant API as FastAPI
     participant DB as PostgreSQL
-    User->>UI: Enter title and description
+    User->>UI: Open dashboard or incidents page
+    UI->>API: GET /incidents
+    API->>DB: Query incidents with SQLAlchemy
+    DB-->>API: Incident records
+    API-->>UI: JSON response
+    UI-->>User: Display incidents and open count
+    User->>UI: Submit incident title and description
     UI->>API: POST /incidents
-    API->>API: Validate request body
-    API->>DB: Insert using SQLAlchemy
+    API->>DB: Insert incident
     DB-->>API: Saved record
-    API-->>UI: Return incident JSON
-    UI-->>User: Display result
+    API-->>UI: Created incident JSON
 ```
 
-## Incident Listing
+## CloudWatch Monitoring API Workflow
 
-1. React requests `GET /incidents`.
-2. FastAPI opens a database session.
-3. SQLAlchemy queries the incidents table.
-4. FastAPI returns the records as JSON.
-5. React renders the incident list.
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API as FastAPI
+    participant CW as CloudWatch
+    participant Agent as CloudWatch Agent
+    Client->>API: GET /monitoring
+    API->>CW: Request CPU metric (AWS/EC2)
+    Agent->>CW: Publish memory and disk metrics (CWAgent)
+    API->>CW: Request memory and disk metrics
+    CW-->>API: Metric datapoints
+    API-->>Client: JSON values and timestamps
+```
+
+The backend monitoring endpoint is implemented. The current React frontend does not call this endpoint; its monitoring screen and dashboard metric cards remain placeholders.
+
+| Metric | CloudWatch Namespace | Source |
+|---|---|---|
+| CPUUtilization | AWS/EC2 | EC2 monitoring |
+| mem_used_percent | CWAgent | CloudWatch Agent |
+| disk_used_percent | CWAgent | CloudWatch Agent |
 
 ## API Endpoints
 
@@ -74,10 +65,10 @@ sequenceDiagram
 
 ## Operational Notes
 
-The backend requires a valid `DATABASE_URL` and AWS permissions to read CloudWatch metrics. The CloudWatch Agent must be running and publishing memory and disk metrics. Metric publication can be delayed, and datapoints may temporarily be unavailable.
+The backend requires a valid `DATABASE_URL` and AWS permissions to read CloudWatch metrics. The CloudWatch Agent must publish memory and disk metrics. Metric publication can be delayed.
 
-The demonstration API process was started manually. Automatic restart after a reboot or persistent process supervision is not configured.
+The frontend incident API URL is currently hardcoded to `http://127.0.0.1:8000`. The backend API process in the demonstration was started manually and is not configured for automatic restart.
 
 ## Future Capabilities
 
-Incident updates and resolution, SNS notifications, Cost Explorer reporting, automated tests, container builds, and CI/CD deployment are not included in the current implementation.
+Frontend metric integration, Cost Explorer reporting, SNS notifications, incident updates/resolution, automated tests, Docker Compose, and CI/CD deployment are future improvements.
