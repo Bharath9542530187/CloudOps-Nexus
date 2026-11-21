@@ -12,13 +12,10 @@ jobs:
       - name: Get project code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Check backend syntax
-        run: python -m compileall -q backend
+      - name: Check Python and backend syntax
+        run: |
+          python3 --version
+          python3 -m compileall -q backend
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
