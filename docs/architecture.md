@@ -1,76 +1,62 @@
-# CloudOps Nexus – Architecture
+# CloudOps Nexus – System Architecture
 
-## 1. Purpose
+## Purpose
+This document explains the current application design and separates working components from future extensions.
 
-CloudOps Nexus is a web application for viewing AWS EC2 monitoring information and managing infrastructure incidents from one dashboard.
-
-The current application has three main software layers:
-
-1. **Frontend:** React and Vite dashboard.
-2. **Backend:** Python FastAPI REST API.
-3. **Database:** PostgreSQL accessed through SQLAlchemy.
-
-The backend also communicates with Amazon CloudWatch through the AWS SDK for Python (Boto3).
-
-## 2. Current architecture
+## Current architecture
 
 ```mermaid
-flowchart TD
-    U["User / Web Browser"] --> FE["React + Vite Frontend"]
-    FE -->|"HTTP requests / JSON"| API["FastAPI REST API"]
-    API -->|"SQLAlchemy queries"| DB[("PostgreSQL")]
-    API -->|"Boto3 API calls"| CW["Amazon CloudWatch"]
-    EC2["AWS EC2 Instance"] -->|"EC2 CPU metric"| CW
-    AGENT["CloudWatch Agent on EC2"] -->|"Memory and disk metrics"| CW
-    ROLE["EC2 IAM Role"] -. "permissions for AWS API access" .-> API
+flowchart TB
+    USER[User / Browser] --> UI[React + Vite Frontend]
+    UI -->|HTTP requests and JSON| API[FastAPI REST API]
+    API -->|SQLAlchemy| DB[(PostgreSQL)]
+    API -->|Boto3 metric queries| CW[Amazon CloudWatch]
+    EC2[Amazon EC2] -->|CPU metrics| CW
+    AGENT[CloudWatch Agent] -->|Memory and disk metrics| CW
+    IAM[EC2 IAM Role] -. authorizes .-> API
 ```
 
-### Request flow
-
-- The user opens the React dashboard in a browser.
-- The frontend sends HTTP requests to the FastAPI backend.
-- For incident operations, FastAPI reads from or writes to PostgreSQL.
-- For server monitoring, FastAPI uses Boto3 to request recent metric data from CloudWatch.
-- The frontend displays the JSON response.
-
-## 3. Component responsibilities
+## Component responsibilities
 
 | Component | Responsibility |
 |---|---|
-| React | Dashboard interface and user interaction |
-| Vite | Frontend development server and build tool |
-| FastAPI | REST API endpoints and request handling |
-| SQLAlchemy | Python object-relational mapping and database access |
+| React + Vite | Displays the dashboard and calls backend endpoints |
+| FastAPI | Provides REST endpoints and handles application logic |
 | PostgreSQL | Stores incident records |
-| Amazon EC2 | Hosts the demonstrated backend environment |
-| Amazon CloudWatch | Stores and provides monitoring metrics |
-| CloudWatch Agent | Sends guest operating system memory and disk metrics |
-| IAM role | Gives the EC2 workload permission to call required AWS APIs |
-| Boto3 | Python SDK used by the backend to call CloudWatch |
+| SQLAlchemy | Maps Python models to database tables |
+| Boto3 | Calls AWS APIs from Python |
+| EC2 | Hosts the demonstrated backend and provides instance metrics |
+| CloudWatch | Stores and serves monitoring metrics |
+| CloudWatch Agent | Collects operating-system memory and disk metrics |
+| IAM role | Grants AWS permissions without hardcoded access keys |
 
-## 4. Monitoring metrics
+## Monitoring data path
+1. The frontend requests the monitoring endpoint.
+2. FastAPI creates a Boto3 CloudWatch client.
+3. The backend requests EC2 CPU data from the AWS/EC2 namespace.
+4. It requests memory and disk data from the CWAgent namespace.
+5. FastAPI returns the latest available values and timestamps as JSON.
+6. React displays the response.
 
-- **CPU utilization:** Read from the `AWS/EC2` CloudWatch namespace.
-- **Memory utilization:** Read from the `CWAgent` namespace.
-- **Disk utilization:** Read from the `CWAgent` namespace.
+## Incident data path
+1. The user submits an incident title and description.
+2. React sends POST /incidents.
+3. FastAPI validates the request.
+4. SQLAlchemy saves the record in PostgreSQL.
+5. GET /incidents retrieves saved records for display.
 
-The backend queries a recent time window and returns the latest available datapoint. A metric may be unavailable if CloudWatch has not received a datapoint or the metric dimensions do not match.
+## Demonstration setup and limitations
+- The React/Vite frontend was run locally during the demonstration.
+- The FastAPI backend was hosted on an EC2 instance.
+- PostgreSQL was used for incident storage. A local PostgreSQL Docker container was used during development; the full application was not containerized.
+- The EC2 API process was started manually. It was not configured as a persistent system service or automatic restart process.
 
-## 5. Current demonstration topology
+## Future design – not implemented
+Potential extensions include Docker Compose, GitHub Actions CI/CD, SNS notifications, Cost Explorer reporting, HTTPS, a persistent service manager, and production deployment automation. These are proposals, not current working components.
 
-The demonstrated setup used the React/Vite frontend on a development computer and the FastAPI backend on an EC2 instance. PostgreSQL was used for incident storage. The backend process was started manually for the demonstration; it was not configured as a production-grade persistent service.
-
-Local development also used a PostgreSQL Docker container. This does **not** mean the complete application has been containerized.
-
-## 6. Proposed future architecture (not implemented)
-
-The following are possible extensions, not completed features:
-
-- Docker images for the frontend and backend.
-- Docker Compose to run the application and database together.
-- GitHub Actions for automated linting, testing, building, and deployment.
-- Amazon SNS for email notifications.
-- AWS Cost Explorer for cost and usage reporting.
-- A persistent service manager, HTTPS, secrets management, and production deployment hardening.
-
-These future components are intentionally shown separately from the current architecture so the repository does not overstate implementation status.
+## Improvements to consider
+- Move the AWS region and instance identifier into environment configuration.
+- Add automated backend and frontend tests.
+- Add authentication and authorization.
+- Add structured logging and stronger validation.
+- Configure HTTPS and persistent process supervision before production use.

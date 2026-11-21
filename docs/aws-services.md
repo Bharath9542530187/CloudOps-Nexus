@@ -1,71 +1,47 @@
 # CloudOps Nexus – AWS Services
 
-## 1. AWS services used
+## Amazon EC2
+Amazon Elastic Compute Cloud provides virtual servers in AWS. In the demonstration, EC2 hosted the FastAPI backend and was the instance being monitored.
 
-### Amazon EC2
-
-Amazon Elastic Compute Cloud provides the virtual server used for the demonstrated backend environment.
-
-In this project, EC2 hosts the FastAPI backend process. The frontend was run separately on the development computer during the demonstration.
-
-### Amazon CloudWatch
-
-CloudWatch collects and stores monitoring metrics. The FastAPI backend uses Boto3 to request metric datapoints and return them to the dashboard.
-
-The backend currently requests:
+## Amazon CloudWatch
+CloudWatch stores and provides access to monitoring metrics. The backend reads the following:
 
 | Metric | Namespace | Meaning |
 |---|---|---|
-| CPU utilization | `AWS/EC2` | Percentage of allocated CPU capacity being used |
-| Memory used | `CWAgent` | Percentage of memory in use |
-| Disk used | `CWAgent` | Percentage of disk space in use |
+| CPUUtilization | AWS/EC2 | Percentage of allocated CPU being used |
+| mem_used_percent | CWAgent | Percentage of memory used |
+| disk_used_percent | CWAgent | Percentage of disk space used |
 
-### CloudWatch Agent
+## CloudWatch Agent
+The CloudWatch Agent runs on the EC2 operating system and collects guest operating system metrics such as memory and disk utilization. It publishes these values to the CWAgent namespace.
 
-The CloudWatch Agent runs on the EC2 operating system and collects system-level metrics such as memory and disk usage. These metrics are published to the `CWAgent` namespace.
+## IAM role
+An IAM role attached to EC2 supplies temporary AWS credentials and permissions to software running on the instance. This avoids storing long-lived access keys in source code. Permissions should follow least privilege.
 
-EC2 CPU metrics are available from the EC2 monitoring integration; memory and disk metrics need the agent.
+## Boto3
+Boto3 is the AWS SDK for Python. The FastAPI backend uses a Boto3 CloudWatch client and calls get_metric_statistics to retrieve recent datapoints.
 
-### AWS IAM role
+## Monitoring request path
+1. React calls GET /monitoring.
+2. FastAPI creates a CloudWatch client in the configured region.
+3. Boto3 obtains credentials through the AWS credential provider chain (on EC2, normally the attached role).
+4. CloudWatch returns datapoints.
+5. FastAPI selects the latest datapoint and returns JSON.
 
-The EC2 instance uses an IAM role so the backend can access CloudWatch without storing long-lived AWS access keys in the application code.
+## Security and configuration
+- Never commit AWS access keys or secrets.
+- Prefer an attached IAM role on EC2.
+- Restrict security group inbound rules to required sources.
+- Move the current source's fixed region and EC2 instance identifier into environment-based configuration before reuse.
+- Ensure metric dimensions match the CloudWatch Agent configuration.
 
-The role should follow least-privilege access: grant only the CloudWatch read actions required by the application.
+## Planned AWS integrations – not implemented
 
-### Boto3
+### Amazon SNS
+Could send email notifications when an incident is created or a metric threshold is crossed. SNS notifications are not currently integrated.
 
-Boto3 is the AWS SDK for Python. The FastAPI monitoring endpoint uses it to create a CloudWatch client and call `get_metric_statistics`.
+### AWS Cost Explorer
+Could provide cost and usage reporting for a cost dashboard. Cost Explorer API integration is not currently implemented.
 
-## 2. Monitoring request sequence
-
-1. The frontend calls the backend's `/monitoring` endpoint.
-2. FastAPI creates a Boto3 CloudWatch client for the configured region.
-3. Boto3 obtains credentials from the runtime environment (the EC2 role in the EC2 setup).
-4. The backend requests metric statistics for the configured EC2 instance.
-5. The backend selects the latest datapoint and returns its value and timestamp.
-
-## 3. Permissions and security
-
-- Attach an IAM role to EC2 rather than putting access keys in source code.
-- Keep IAM permissions limited to the required read-only CloudWatch actions.
-- Never commit AWS access keys, private keys, passwords, database URLs, or real `.env` files.
-- Restrict SSH access to trusted IP addresses.
-- Do not expose the database port publicly.
-- For a production deployment, use HTTPS, managed secrets, security-group restrictions, logging, and a persistent application service.
-
-## 4. Configuration notes
-
-The current backend source specifies the AWS region and EC2 instance identifier in its configuration. For a more reusable deployment, these values should be moved into environment variables and documented through placeholders in `.env.example`.
-
-Do not copy live credentials or sensitive environment values into this repository.
-
-## 5. Planned AWS extensions (not implemented)
-
-| Service / feature | Intended purpose | Status |
-|---|---|---|
-| Amazon SNS | Send email notifications for selected events | Planned |
-| AWS Cost Explorer | Display cost and usage information | Planned |
-| CloudWatch alarms | Trigger actions when metrics cross thresholds | Not shown as implemented |
-| Automated recovery | Execute approved remediation actions | Future idea |
-
-This document separates the AWS services used by the current monitoring workflow from possible future integrations.
+### Production deployment improvements
+HTTPS, persistent process supervision, load balancing, managed secrets, and automated deployment are future improvements.
