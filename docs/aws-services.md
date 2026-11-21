@@ -1,41 +1,31 @@
-# CloudOps Nexus – AWS Services
+# AWS Services
 
 ## Amazon EC2
 
-Amazon Elastic Compute Cloud provides virtual servers in AWS. In CloudOps Nexus, EC2 hosts the demonstrated FastAPI backend and is the infrastructure instance being monitored.
+The existing EC2 instance hosts the CloudOps Nexus application. Docker Compose runs the frontend, backend, and PostgreSQL containers on this server.
 
 ## Amazon CloudWatch
 
-Amazon CloudWatch collects and provides access to monitoring metrics. CloudOps Nexus retrieves the following metrics:
+CloudWatch provides the metrics returned by the backend monitoring endpoint.
 
-| Metric | Namespace | Description |
+| Metric | Namespace | Meaning |
 |---|---|---|
-| CPUUtilization | AWS/EC2 | Percentage of allocated CPU being used |
-| mem_used_percent | CWAgent | Percentage of memory used |
-| disk_used_percent | CWAgent | Percentage of disk space used |
+| CPUUtilization | AWS/EC2 | EC2 CPU usage percentage |
+| mem_used_percent | CWAgent | Operating system memory usage |
+| disk_used_percent | CWAgent | Operating system disk usage |
 
 ## CloudWatch Agent
 
-The CloudWatch Agent runs on the EC2 operating system and collects guest operating system metrics, including memory and disk utilization. It publishes these metrics to the CWAgent namespace.
+The CloudWatch Agent runs on the EC2 host and publishes memory and disk metrics to the CWAgent namespace.
 
-## AWS IAM Role
+## EC2 Instance Role
 
-An IAM role attached to EC2 provides temporary AWS permissions to applications running on the instance. The role is configured with the permissions needed by the monitoring application.
+The EC2 instance role gives the backend permission to read CloudWatch metrics. The backend uses the AWS permissions available from the EC2 host.
 
 ## Boto3
 
-Boto3 is the AWS SDK for Python. The FastAPI backend uses a Boto3 CloudWatch client and the `get_metric_statistics` operation to retrieve recent metric datapoints.
+Boto3 is the AWS SDK for Python. FastAPI uses it to request the latest available metric datapoints from CloudWatch.
 
-## Monitoring Request Flow
+## Application Flow
 
-1. React calls the FastAPI `GET /monitoring` endpoint.
-2. FastAPI creates a CloudWatch client in the configured AWS region.
-3. Boto3 uses the AWS permissions available to the backend host.
-4. CloudWatch returns the requested datapoints.
-5. FastAPI selects the latest datapoint and returns the result as JSON.
-
-## Planned AWS Integrations
-
-Amazon SNS email notifications and AWS Cost Explorer reporting are planned extensions. Neither integration is part of the current working application.
-
-HTTPS, persistent process supervision, load balancing, and automated deployment are also potential improvements for a production environment.
+React requests monitoring data from FastAPI. FastAPI uses Boto3 to query CloudWatch and returns the values to React. Nginx forwards browser API requests to the backend container.
