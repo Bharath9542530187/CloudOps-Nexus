@@ -14,8 +14,10 @@ if [ ! -d /opt/cloudops-nexus/.git ]; then
 fi
 
 cd /opt/cloudops-nexus
-cp .env.example .env
-chmod 600 .env
+if [ ! -f .env ]; then
+  cp .env.example .env
+  chmod 600 .env
+fi
 
 echo "Docker is installed and the project is in /opt/cloudops-nexus."
 echo "Edit /opt/cloudops-nexus/.env with the existing EC2 instance ID and a strong database password."
