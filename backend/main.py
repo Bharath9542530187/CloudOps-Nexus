@@ -1,42 +1,29 @@
- 
-from fastapi import FastAPI, Depends, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
-from database import SessionLocal, engine, Base
-from models import Incident
-from pydantic import BaseModel
+import os
+from datetime import datetime, timedelta, timezone
 
 import boto3
-from datetime import datetime, timedelta, timezone
 from botocore.exceptions import BotoCoreError, ClientError
+from fastapi import Depends, FastAPI, HTTPException
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from database import Base, SessionLocal, engine
+from models import Incident
+
+app = FastAPI(title="CloudOps Nexus")
+
+AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
+EC2_INSTANCE_ID = os.getenv("EC2_INSTANCE_ID", "")
+CW_DISK_DEVICE = os.getenv("CW_DISK_DEVICE", "nvme0n1p1")
+CW_DISK_FSTYPE = os.getenv("CW_DISK_FSTYPE", "xfs")
+CW_DISK_PATH = os.getenv("CW_DISK_PATH", "/")
 
 
-# Create FastAPI application
-app = FastAPI(title="CloudOps Intelligence Platform")
-
-# AWS configuration
-AWS_REGION = "us-east-1"
-INSTANCE_ID = "i-01d84b19a86a4b42d"
+@app.on_event("startup")
+def create_tables():
+    Base.metadata.create_all(bind=engine)
 
 
-# Enable CORS for React frontend
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173"
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-# Create database tables
-Base.metadata.create_all(bind=engine)
-
-
-# Database connection
 def get_db():
     db = SessionLocal()
     try:
@@ -45,133 +32,81 @@ def get_db():
         db.close()
 
 
-# Request format
 class IncidentCreate(BaseModel):
     title: str
     description: str
 
 
-# Get latest CloudWatch metric
-def get_latest_metric(cloudwatch, namespace, metric_name, dimensions):
-
+def get_latest_metric(client, namespace, metric_name, dimensions):
     end_time = datetime.now(timezone.utc)
-    start_time = end_time - timedelta(minutes=15)
-
-    response = cloudwatch.get_metric_statistics(
+    response = client.get_metric_statistics(
         Namespace=namespace,
         MetricName=metric_name,
         Dimensions=dimensions,
-        StartTime=start_time,
+        StartTime=end_time - timedelta(minutes=30),
         EndTime=end_time,
         Period=300,
-        Statistics=["Average"]
+        Statistics=["Average"],
     )
+    points = response.get("Datapoints", [])
+    if not points:
+        return {"value": None, "timestamp": None}
 
-    datapoints = response["Datapoints"]
-
-    if not datapoints:
-        return {
-            "value": None,
-            "timestamp": None
-        }
-
-    latest = max(datapoints, key=lambda point: point["Timestamp"])
-
+    latest = max(points, key=lambda point: point["Timestamp"])
     return {
         "value": round(latest["Average"], 2),
-        "timestamp": latest["Timestamp"].isoformat()
+        "timestamp": latest["Timestamp"].isoformat(),
     }
 
 
-# Home endpoint
 @app.get("/")
 def home():
-    return {
-        "message": "CloudOps Intelligence Platform is running"
-    }
+    return {"message": "CloudOps Nexus API is running"}
 
 
-# Health endpoint
 @app.get("/health")
 def health():
-    return {
-        "status": "Healthy"
-    }
+    return {"status": "healthy"}
 
 
-# AWS monitoring endpoint
 @app.get("/monitoring")
 def get_monitoring_metrics():
+    if not EC2_INSTANCE_ID:
+        raise HTTPException(status_code=503, detail="EC2_INSTANCE_ID is not configured")
 
     try:
-        cloudwatch = boto3.client(
-            "cloudwatch",
-            region_name=AWS_REGION
-        )
+        client = boto3.client("cloudwatch", region_name=AWS_REGION)
+        instance = [{"Name": "InstanceId", "Value": EC2_INSTANCE_ID}]
 
-        cpu = get_latest_metric(
-            cloudwatch,
-            "AWS/EC2",
-            "CPUUtilization",
-            [
-                {"Name": "InstanceId", "Value": INSTANCE_ID}
-            ]
-        )
-
-        memory = get_latest_metric(
-            cloudwatch,
-            "CWAgent",
-            "mem_used_percent",
-            [
-                {"Name": "InstanceId", "Value": INSTANCE_ID}
-            ]
-        )
-
-        disk = get_latest_metric(
-            cloudwatch,
-            "CWAgent",
-            "disk_used_percent",
-            [
-                {"Name": "InstanceId", "Value": INSTANCE_ID},
-                {"Name": "device", "Value": "nvme0n1p1"},
-                {"Name": "fstype", "Value": "xfs"},
-                {"Name": "path", "Value": "/"}
-            ]
-        )
+        cpu = get_latest_metric(client, "AWS/EC2", "CPUUtilization", instance)
+        memory = get_latest_metric(client, "CWAgent", "mem_used_percent", instance)
+        disk_dimensions = instance + [
+            {"Name": "device", "Value": CW_DISK_DEVICE},
+            {"Name": "fstype", "Value": CW_DISK_FSTYPE},
+            {"Name": "path", "Value": CW_DISK_PATH},
+        ]
+        disk = get_latest_metric(client, "CWAgent", "disk_used_percent", disk_dimensions)
 
         return {
-            "instance_id": INSTANCE_ID,
+            "instance_id": EC2_INSTANCE_ID,
+            "region": AWS_REGION,
             "cpu": cpu,
             "memory": memory,
-            "disk": disk
+            "disk": disk,
         }
-
     except (BotoCoreError, ClientError) as error:
-        raise HTTPException(
-            status_code=503,
-            detail=f"CloudWatch monitoring error: {str(error)}"
-        )
+        raise HTTPException(status_code=503, detail=f"CloudWatch error: {error}") from error
 
 
-# Create incident
 @app.post("/incidents")
-def create_incident(
-    incident: IncidentCreate,
-    db: Session = Depends(get_db)
-):
-    new_incident = Incident(
-        title=incident.title,
-        description=incident.description
-    )
-
-    db.add(new_incident)
+def create_incident(incident: IncidentCreate, db: Session = Depends(get_db)):
+    record = Incident(title=incident.title, description=incident.description)
+    db.add(record)
     db.commit()
-    db.refresh(new_incident)
+    db.refresh(record)
+    return record
 
-    return new_incident
 
-
-# View all incidents
 @app.get("/incidents")
 def get_incidents(db: Session = Depends(get_db)):
-    return db.query(Incident).all()
+    return db.query(Incident).order_by(Incident.created_at.desc()).all()
