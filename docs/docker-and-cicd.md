@@ -1,56 +1,55 @@
-# Docker and GitHub Actions – Future Enhancements
-
-Docker and GitHub Actions are not implemented in the current CloudOps Nexus application. The following sections describe how they could extend the project.
+# Docker and GitHub Actions
 
 ## Docker
 
-Docker packages an application and its dependencies into an image. A container is a running instance of an image.
+Docker packages each part of the application with the software it needs to run.
 
-A containerized version of CloudOps Nexus could separate the application into:
-- A React/Vite frontend container.
-- A FastAPI backend container.
-- A PostgreSQL container for local development.
+CloudOps Nexus has three containers:
 
-## Proposed Docker Compose Architecture
+- React production frontend served by Nginx.
+- FastAPI backend.
+- PostgreSQL database.
 
-```mermaid
-flowchart TB
-    B[Browser] --> F[Frontend Container]
-    F --> A[FastAPI Container]
-    A --> D[(PostgreSQL Container)]
+## Docker Compose
+
+Docker Compose starts and manages the three containers using `docker-compose.yml`. The containers communicate over a private Docker network. PostgreSQL data is stored in a named volume so it remains when the application containers are rebuilt.
+
+Start the application:
+
+```bash
+docker compose up -d --build
 ```
 
-Docker Compose could define the services in one YAML file, configure their environment variables, and provide persistent database storage through a named volume.
+View running containers:
 
-A PostgreSQL container was used during local development. The frontend, backend, and database have not been packaged together as a complete Docker Compose application.
-
-## GitHub Actions CI/CD
-
-GitHub Actions could automate quality checks and deployment when code is pushed or a pull request is opened.
-
-```mermaid
-flowchart TD
-    P[Push or Pull Request] --> C[Checkout Repository]
-    C --> S[Set Up Python and Node]
-    S --> T[Run Tests and Lint]
-    T --> B[Build Frontend]
-    B --> I[Build Container Images]
-    I --> R[Publish to Image Registry]
-    R --> D[Deploy to AWS]
+```bash
+docker compose ps
 ```
 
-A future pipeline could:
-1. Check out the repository.
-2. Install Python and Node.js dependencies.
-3. Run backend tests and frontend checks.
-4. Build Docker images.
-5. Publish images to a container registry.
-6. Deploy to AWS after required approvals.
+View application logs:
 
-## Security
+```bash
+docker compose logs -f
+```
 
-Workflow secrets should not be stored in repository files. GitHub Actions secrets or AWS OIDC with a narrowly scoped IAM role can be used for deployment credentials.
+Stop the containers:
 
-## Interview Summary
+```bash
+docker compose down
+```
 
-Docker and GitHub Actions are planned improvements. The proposed design separates application services into containers and automates testing, building, image publishing, and deployment. No working CI/CD pipeline is included in this version.
+## GitHub Actions
+
+GitHub Actions automates deployment when code is pushed to the `main` branch.
+
+The workflow:
+1. Downloads the latest project code.
+2. Checks the backend Python files.
+3. Builds the React frontend.
+4. Checks the Docker Compose configuration.
+5. Connects to the existing EC2 instance over SSH.
+6. Pulls the latest code and rebuilds the containers with Docker Compose.
+
+The deployment uses three GitHub repository secrets: `EC2_HOST`, `EC2_USER`, and `EC2_SSH_KEY`.
+
+The workflow deploys to the existing EC2 instance and does not create another server.
