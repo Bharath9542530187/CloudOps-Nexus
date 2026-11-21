@@ -43,7 +43,7 @@ jobs:
           chmod 600 "$GITHUB_WORKSPACE/.env"
 
           for key in POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD AWS_REGION EC2_INSTANCE_ID; do
-            if ! grep -q "^\${key}=." "$GITHUB_WORKSPACE/.env"; then
+            if ! grep -Eq "^${key}=[^[:space:]]" "$GITHUB_WORKSPACE/.env"; then
               echo "ERROR: $key is missing or empty in deployment .env"
               exit 1
             fi
