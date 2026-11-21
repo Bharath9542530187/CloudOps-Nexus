@@ -30,14 +30,36 @@ jobs:
           npm ci
           npm run build
 
-      - name: Check Docker Compose file
-        run: docker-compose config -q
+      - name: Prepare deployment environment
+        run: |
+          set -e
+          ENV_SOURCE="/home/ec2-user/cloudops-backend/.env"
+          if [ ! -f "$ENV_SOURCE" ]; then
+            echo "ERROR: Deployment .env file not found at $ENV_SOURCE"
+            exit 1
+          fi
+
+          cp "$ENV_SOURCE" "$GITHUB_WORKSPACE/.env"
+          chmod 600 "$GITHUB_WORKSPACE/.env"
+
+          for key in POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD AWS_REGION EC2_INSTANCE_ID; do
+            if ! grep -q "^\${key}=." "$GITHUB_WORKSPACE/.env"; then
+              echo "ERROR: $key is missing or empty in deployment .env"
+              exit 1
+            fi
+            echo "$key is configured"
+          done
+
+          docker-compose config -q
+          echo "Docker Compose configuration is valid."
 
       - name: Deploy on EC2
         run: |
-          if [ -f /home/ec2-user/cloudops-backend/.env ]; then
-            cp /home/ec2-user/cloudops-backend/.env .env
-          fi
-          docker-compose up -d --build --remove-orphans
-          docker image prune -f
+          set -e
+          docker-compose up -d --build --remove-orphans || {
+            echo "Deployment failed. PostgreSQL and service logs:"
+            docker-compose ps -a
+            docker-compose logs --no-color --tail=100 database || true
+            exit 1
+          }
           docker-compose ps
