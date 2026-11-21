@@ -1,0 +1,52 @@
+services:
+  database:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cloudops
+
+  backend:
+    build: ./backend
+    image: cloudops-nexus-backend:latest
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB}
+      AWS_REGION: ${AWS_REGION}
+      EC2_INSTANCE_ID: ${EC2_INSTANCE_ID}
+      CW_DISK_DEVICE: ${CW_DISK_DEVICE:-nvme0n1p1}
+      CW_DISK_FSTYPE: ${CW_DISK_FSTYPE:-xfs}
+      CW_DISK_PATH: ${CW_DISK_PATH:-/}
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - cloudops
+
+  frontend:
+    build: ./frontend
+    image: cloudops-nexus-frontend:latest
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - cloudops
+
+volumes:
+  postgres_data:
+
+networks:
+  cloudops:
+    driver: bridge
